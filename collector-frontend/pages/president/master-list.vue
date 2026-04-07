@@ -79,9 +79,7 @@
                 />
                 <span>Descending</span>
               </label>
-            </div>
-
-            <select
+            </div>            <select
               v-model="sortBy"
               class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
             >
@@ -90,7 +88,34 @@
               <option value="name">Name</option>
               <option value="total">Total</option>
               <option value="date">Date</option>
+            </select>            <!-- Billing Period / Month Filter Dropdown -->
+            <select
+              v-model="selectedPeriodId"
+              @change="loadMembers"
+              class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+            >
+              <option :value="null">Current (Live Data)</option>
+              <option
+                v-for="period in billingPeriods"
+                :key="period.id"
+                :value="period.id"
+              >
+                {{ period.label }}
+              </option>
             </select>
+
+            <!-- Save Month Button -->
+            <button
+              @click="generateSnapshotForThisMonth"
+              :disabled="savingSnapshot"
+              class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 no-print disabled:opacity-50"
+            >
+              <svg v-if="!savingSnapshot" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+              </svg>
+              <span v-if="!savingSnapshot">Save Month</span>
+              <span v-else>Saving...</span>
+            </button>
 
             <button
               @click="printMasterList"
@@ -99,9 +124,17 @@
               <span>Print Master List</span>
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-              </svg>
-            </button>
-          </div>
+              </svg>            </button>
+          </div>        </div>
+
+        <!-- Snapshot message notification -->
+        <div v-if="snapshotMessage" :class="[
+          'p-4 border-b',
+          snapshotMessage.includes('✓') 
+            ? 'bg-green-50 text-green-800 border-green-200'
+            : 'bg-red-50 text-red-800 border-red-200'
+        ]">
+          {{ snapshotMessage }}
         </div>
 
         <div id="printable-master-list" class="overflow-x-auto">
@@ -124,15 +157,16 @@
                 <th class="px-4 py-3 text-right text-xs font-semibold text-gray-800 border-r border-gray-300">Total</th>
                 <th class="px-4 py-3 text-left text-xs font-semibold text-gray-800">Date</th>
               </tr>
-            </thead>
-            <tbody class="bg-white">
-              <tr v-for="(member, index) in filteredMembers" :key="member.member_id" class="hover:bg-gray-50 border-b border-gray-200">
+            </thead>            <tbody class="bg-white">
+              <tr v-for="(member, index) in filteredMembers" :key="member.member_id" :class="[
+                'hover:bg-gray-50 border-b border-gray-200',
+                member.connection_status === 0 ? 'bg-red-100' : ''
+              ]">
                 <td class="px-4 py-3 text-gray-900 border-r border-gray-200">{{ index + 1 }}</td>
                 <td class="px-4 py-3 text-gray-900 border-r border-gray-200">{{ member.account_no }}</td>
-                <td class="px-4 py-3 text-gray-900 border-r border-gray-200">{{ member.meter_no }}</td>
-                <td class="px-4 py-3 text-gray-900 border-r border-gray-200">
-                  {{ member.lname }}, {{ member.fname }} {{ member.mname ? member.mname.charAt(0) + '.' : '' }}
-                </td>                <td class="px-4 py-3 text-gray-900 border-r border-gray-200 text-center">{{ member.cum_consumption || 0 }}</td>
+                <td class="px-4 py-3 text-gray-900 border-r border-gray-200">{{ member.meter_no }}</td><td class="px-4 py-3 text-gray-900 border-r border-gray-200">
+                  {{ member.name || (member.lname + ', ' + member.fname + (member.mname ? ' ' + member.mname.charAt(0) + '.' : '')) }}
+                </td><td class="px-4 py-3 text-gray-900 border-r border-gray-200 text-center">{{ member.cum_consumption || 0 }}</td>
                 <td class="px-4 py-3 text-gray-900 border-r border-gray-200 text-right">₱{{ (member.minimum_amount || 0).toFixed(2) }}</td>
                 <td class="px-4 py-3 text-gray-900 border-r border-gray-200 text-right">₱{{ (member.excess_cum || 0).toFixed(2) }}</td>                
                 <!-- <td class="px-4 py-3 text-gray-900 border-r border-gray-200 text-right">₱{{ (member.loss_damage || 0).toFixed(2) }}</td> -->                <td class="px-4 py-3 text-gray-900 border-r border-gray-200 text-right">
@@ -199,6 +233,98 @@ const sortBy = ref('account_no')
 const sortOrder = ref('asc')
 const authInitialized = ref(false)
 
+// Billing period state (for record keeping / history)
+const billingPeriods = ref([])
+const selectedPeriodId = ref(null)
+const selectedPeriodLabel = ref('Current (Live Data)')
+const savingSnapshot = ref(false)
+const snapshotMessage = ref('')
+
+const loadBillingPeriods = async () => {
+  try {
+    const periods = await api('/billing-periods')
+    billingPeriods.value = periods
+
+    if (periods.length > 0) {
+      // Determine current billing period based on billing cycle (10th to 9th)
+      const now = new Date()
+      let currentYear = now.getFullYear()
+      let currentMonth = now.getMonth() + 1 // JS months 0-11, so add 1 for 1-12
+
+      // Billing cycle: 10th of month X to 9th of month X+1
+      // If today is between 1st-9th, we're in the previous month's billing cycle
+      const day = now.getDate()
+      if (day < 10) {
+        currentMonth = currentMonth - 1
+        if (currentMonth < 1) {
+          currentMonth = 12
+          currentYear = currentYear - 1
+        }
+      }
+
+      const currentPeriod = periods.find(
+        p => p.year === currentYear && p.month === currentMonth
+      )
+
+      if (currentPeriod) {
+        selectedPeriodId.value = currentPeriod.id
+        selectedPeriodLabel.value = currentPeriod.label
+      } else {
+        // fallback to most recent period
+        selectedPeriodId.value = periods[0].id
+        selectedPeriodLabel.value = periods[0].label
+      }
+    } else {
+      selectedPeriodId.value = null
+      selectedPeriodLabel.value = 'Current (Live Data)'
+    }
+  } catch (err) {
+    console.error('Failed to load billing periods:', err)
+    selectedPeriodId.value = null
+    selectedPeriodLabel.value = 'Current (Live Data)'
+  }
+}
+
+const generateSnapshotForThisMonth = async () => {
+  const now = new Date()
+  let year = now.getFullYear()
+  let month = now.getMonth() + 1 // Current month (1-12)
+  
+  // Billing cycle: 10th of month X to 9th of month X+1
+  // If today is between 1st-9th, we're in the previous month's billing cycle
+  const day = now.getDate()
+  if (day < 10) {
+    month = month - 1
+    if (month < 1) {
+      month = 12
+      year = year - 1
+    }
+  }
+
+  savingSnapshot.value = true
+  snapshotMessage.value = ''
+  try {
+    const result = await api('/billing-periods/generate', {
+      method: 'POST',
+      body: { year, month }
+    })
+
+    snapshotMessage.value = `✓ Monthly snapshot saved for ${result.label}`
+    
+    // Reload periods and select the newly generated one
+    await loadBillingPeriods()
+    
+    setTimeout(() => {
+      snapshotMessage.value = ''
+    }, 3000)
+  } catch (err) {
+    snapshotMessage.value = `✗ Failed to save snapshot: ${err.message}`
+    console.error('Failed to generate snapshot:', err)
+  } finally {
+    savingSnapshot.value = false
+  }
+}
+
 onBeforeMount(() => {
   if (process.client) {
     authStore.initAuth()
@@ -217,9 +343,10 @@ const filteredMembers = computed(() => {
     const query = searchQuery.value.toLowerCase()
     filtered = filtered.filter(m => 
       m.account_no.toLowerCase().includes(query) ||
-      m.fname.toLowerCase().includes(query) ||
-      m.lname.toLowerCase().includes(query) ||
-      m.meter_no.toLowerCase().includes(query)
+      (m.fname && m.fname.toLowerCase().includes(query)) ||
+      (m.lname && m.lname.toLowerCase().includes(query)) ||
+      (m.name && m.name.toLowerCase().includes(query)) ||
+      (m.meter_no && m.meter_no.toLowerCase().includes(query))
     )
   }
 
@@ -230,8 +357,9 @@ const filteredMembers = computed(() => {
       aVal = a.account_no
       bVal = b.account_no
     } else if (sortBy.value === 'name') {
-      aVal = `${a.lname}, ${a.fname}`
-      bVal = `${b.lname}, ${b.fname}`
+      // Use 'name' field if available (historical data), otherwise construct from fname/lname
+      aVal = a.name || `${a.lname || ''}, ${a.fname || ''}`
+      bVal = b.name || `${b.lname || ''}, ${b.fname || ''}`
     } else if (sortBy.value === 'total') {
       aVal = calculateTotal(a)
       bVal = calculateTotal(b)
@@ -253,8 +381,15 @@ const filteredMembers = computed(() => {
 const loadMembers = async () => {
   loading.value = true
   try {
-    const data = await api('/master-list')
-    members.value = data
+    if (!selectedPeriodId.value) {
+      // Live data - current master list
+      const data = await api('/master-list')
+      members.value = data
+    } else {
+      // Load historical snapshot for selected billing period
+      const data = await api(`/monthly-master-list/${selectedPeriodId.value}`)
+      members.value = data
+    }
   } catch (err) {
     console.error('Failed to load members:', err)
   } finally {
@@ -266,24 +401,47 @@ const printMasterList = () => {
   const printContent = document.getElementById('printable-master-list')
   const printWindow = window.open('', '', 'height=600,width=800')
   
+  let periodInfo = ''
+  if (selectedPeriodId.value) {
+    periodInfo = `<p>Period: <strong>${selectedPeriodLabel.value}</strong></p>`
+  } else {
+    periodInfo = '<p>Period: <strong>Current (Live Data)</strong></p>'
+  }
+
   printWindow.document.write('<html><head><title>Master List</title>')
   printWindow.document.write('<style>')
   printWindow.document.write(`
     body { font-family: Arial, sans-serif; margin: 20px; }
     h1 { text-align: center; margin-bottom: 20px; }
+    .period-info { text-align: center; font-weight: bold; margin-bottom: 15px; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
     th { background-color: #d4edda; font-weight: bold; }
     tr:nth-child(even) { background-color: #f9f9f9; }
+    tr.disconnected { background-color: #fee2e2 !important; }
+    tr.disconnected td { color: #991b1b; font-weight: bold; }
     .print-header { text-align: center; margin-bottom: 20px; }
   `)
   printWindow.document.write('</style></head><body>')
   printWindow.document.write('<div class="print-header">')
   printWindow.document.write('<h1>CHARMAFA - Master List</h1>')
   printWindow.document.write('<p>A Waterworks Service Association</p>')
+  printWindow.document.write(periodInfo)
   printWindow.document.write('<p>Generated: ' + new Date().toLocaleDateString() + '</p>')
   printWindow.document.write('</div>')
-  printWindow.document.write(printContent.innerHTML)
+  
+  // Get the table and add class to disconnected rows
+  const printableTable = printContent.cloneNode(true)
+  const rows = printableTable.querySelectorAll('tbody tr')
+  
+  rows.forEach((row, index) => {
+    const member = filteredMembers.value[index]
+    if (member && member.connection_status === 0) {
+      row.classList.add('disconnected')
+    }
+  })
+  
+  printWindow.document.write(printableTable.innerHTML)
   printWindow.document.write('</body></html>')
   
   printWindow.document.close()
@@ -298,12 +456,23 @@ const handleLogout = async () => {
 // Update damage charges function
 const updateDamageCharges = async (member) => {
   try {
-    await api(`/members/${member.member_id}/damage-charges`, {
-      method: 'PUT',
-      body: {
-        damage_charges: parseFloat(member.damage_charges || 0)
-      }
-    })
+    if (selectedPeriodId.value) {
+      // Updating snapshot data - update monthly_master_lists table
+      await api(`/monthly-master-list/${member.id}`, {
+        method: 'PUT',
+        body: {
+          damage_charges: parseFloat(member.damage_charges || 0)
+        }
+      })
+    } else {
+      // Updating live data - update members table
+      await api(`/members/${member.member_id}/damage-charges`, {
+        method: 'PUT',
+        body: {
+          damage_charges: parseFloat(member.damage_charges || 0)
+        }
+      })
+    }
     
     // Recalculate total to include damage charges
     member.total = calculateTotalWithDamageCharges(member)
@@ -335,7 +504,9 @@ const validateNumericInput = (event) => {
 }
 
 onMounted(() => {
-  loadMembers()
+  loadBillingPeriods().then(() => {
+    loadMembers()
+  })
 })
 </script>
 
@@ -364,6 +535,7 @@ onMounted(() => {
 
 /* Firefox */
 .no-spinner[type=number] {
+  appearance: none;
   -moz-appearance: textfield;
 }
 </style>

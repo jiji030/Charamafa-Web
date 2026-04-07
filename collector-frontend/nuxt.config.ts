@@ -13,7 +13,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       // Dynamic IP will be set by auto_configure_network.ps1
-      apiBase: 'http://192.168.254.108:8000/api',
+      apiBase: 'http://192.168.8.36:8000/api',
     }
   },
 
@@ -34,6 +34,15 @@ export default defineNuxtConfig({
 
   devtools: { enabled: true }
 })
+
+
+
+
+
+
+
+
+
 
 
 

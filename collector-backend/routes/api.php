@@ -19,6 +19,7 @@ use App\Http\Controllers\TsNumberController;
 use App\Http\Controllers\WaterConsumptionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\OrBookletController;
+use App\Http\Controllers\MonthlyArchiveController;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -199,13 +200,40 @@ Route::middleware('auth:sanctum')->group(function () {
         
         return response()->json(['message' => 'Not time to reset yet']);
     });
-    
-    // Dashboard routes for president
+      // Dashboard routes for president
     Route::get('/dashboard/analytics', [DashboardController::class, 'analytics']);
     Route::get('/dashboard/unpaid-members', [DashboardController::class, 'unpaidMembers']);
     Route::get('/dashboard/monthly-trends', [DashboardController::class, 'monthlyTrends']);
     Route::get('/dashboard/payment-breakdown', [DashboardController::class, 'paymentTypeBreakdown']);
     Route::get('/dashboard/collector-performance', [DashboardController::class, 'collectorPerformance']);
+    
+    // Billing period & monthly master list (record keeping)    
+    Route::post('/billing-periods/generate', [MonthlyArchiveController::class, 'generate']);
+    Route::get('/billing-periods', function () {
+        return DB::table('billing_periods')
+            ->orderByDesc('year')
+            ->orderByDesc('month')
+            ->get();
+    });    Route::get('/monthly-master-list/{billingPeriod}', function ($billingPeriod) {
+        return DB::table('monthly_master_lists')
+            ->where('billing_period_id', $billingPeriod)
+            ->orderBy('account_no')
+            ->get();
+    });
+    
+    Route::put('/monthly-master-list/{monthlyMasterListId}', function ($monthlyMasterListId) {
+        $request = request();
+        DB::table('monthly_master_lists')
+            ->where('id', $monthlyMasterListId)
+            ->update([
+                'damage_charges' => $request->input('damage_charges', 0),
+                'updated_at' => now(),
+            ]);
+        
+        return response()->json(['message' => 'Updated successfully']);
+    });
+    
+    Route::get('/or-booklet', [OrBookletController::class, 'index']);
     
 });
 
