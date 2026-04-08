@@ -62,24 +62,29 @@ class MonthlyArchiveController extends Controller
                     ->where('billing_period_id', $period->id)
                     ->delete();
             }            // Get important_information for calculations (same as MasterListController)
-            $info = DB::table('important_information')->first();
-              // Get members with latest water consumption (same logic as MasterListController)
+            $info = DB::table('important_information')->first();            // Get members with latest water consumption (same logic as MasterListController)
             $rows = DB::table('members')
                 ->leftJoin('water_consumptions', function($join) {
                     $join->on('members.member_id', '=', 'water_consumptions.member_Id')
                          ->whereRaw('water_consumptions.id = (SELECT MAX(id) FROM water_consumptions WHERE member_Id = members.member_id)');
                 })
-                ->select(
+                ->leftJoin('ts_numbers', 'members.ts_Id', '=', 'ts_numbers.ts_Id')                ->select(
                     'members.member_id',
                     'members.account_no',
                     'members.meter_no',
                     'members.fname',
                     'members.lname',
                     'members.mname',
+                    'members.ts_Id',
                     'members.damage_charges',
                     'members.prev_balance',
                     'members.connection_status',
-                    'water_consumptions.present_CUM_consumption'
+                    'ts_numbers.ts_no',
+                    'ts_numbers.landmark',
+                    'water_consumptions.present_CUM_consumption',
+                    'water_consumptions.prev_CUM_consumption',
+                    'water_consumptions.present_meter_reading',
+                    'water_consumptions.prev_meter_reading'
                 )
                 ->get();
 
@@ -111,10 +116,17 @@ class MonthlyArchiveController extends Controller
                 $totalBill = $subtotal + $vat + $generatorConsumption + $electricityConsumption + $damages + $prevBalance + $damageCharges;                DB::table('monthly_master_lists')->insert([
                     'billing_period_id' => $period->id,
                     'member_id'         => $m->member_id,
+                    'ts_id'             => $m->ts_Id,
+                    'ts_no'             => $m->ts_no,
+                    'landmark'          => $m->landmark,
                     'account_no'        => $m->account_no,
                     'meter_no'          => $m->meter_no,
                     'name'              => trim("{$m->lname}, {$m->fname} " . ($m->mname ? substr($m->mname, 0, 1) . '.' : '')),
+                    'prev_CUM_consumption' => $m->prev_CUM_consumption ?? 0,
+                    'present_CUM_consumption' => $presentConsumption,
                     'cum_consumption'   => $presentConsumption,
+                    'prev_meter_reading' => $m->prev_meter_reading,
+                    'present_meter_reading' => $m->present_meter_reading,
                     'minimum_amount'    => $minimumAmount,
                     'excess_cum'        => $excessCharge,
                     'damage_charges'    => $damageCharges,

@@ -331,9 +331,7 @@ class MemberController extends Controller
         'sex_value' => $request->input('sex')
     ]);
 
-    $member = Member::findOrFail($id);
-
-    try {
+    $member = Member::findOrFail($id);        try {
         $validated = $request->validate([
             'account_no' => 'required|string|unique:members,account_no,' . $id . ',member_id',
             'purok_id' => 'required|integer|exists:puroks,purok_id',
@@ -374,8 +372,7 @@ class MemberController extends Controller
             'spouse_occupation' => 'nullable|string|max:255',
             'spouse_phone_no' => 'nullable|string|max:20',
             'government_type_id' => 'nullable|string|max:50',
-            'government_no' => 'nullable|string|max:100',
-            'membership_fee_id' => 'required|integer|exists:membership_fees,membership_fee_id',
+            'government_no' => 'nullable|string|max:100',            'membership_fee_id' => 'required|integer|exists:membership_fees,membership_fee_id',
             'prev_balance' => 'nullable|numeric',
             'photo' => 'nullable|image|mimes:jpeg,png,jpg|max:5120',
             'remove_photo' => 'nullable|boolean'
@@ -391,15 +388,12 @@ class MemberController extends Controller
             'message' => 'Validation failed',
             'errors' => $e->errors()
         ], 422);
-    }
-
-    // Define fields that should be converted to null if empty
+    }    // Define fields that should be converted to null if empty
     $nullableFields = [
         'mname', 'suffix', 'zip_code', 'region', 'place_of_birth', 'civil_status',
         'mobile_no', 'religion', 'ethnicity', 'language', 'height', 'weight',
         'occupation', 'company_address', 'education_attainment', 'school_address',
-        'course', 'year_graduated', 'spouse_fname', 'spouse_mname', 'spouse_lname',
-        'spouse_suffix', 'spouse_date_of_birth', 'spouse_address', 'spouse_ethnicity',
+        'course', 'year_graduated', 'spouse_fname', 'spouse_mname', 'spouse_lname',        'spouse_suffix', 'spouse_date_of_birth', 'spouse_address', 'spouse_ethnicity',
         'spouse_occupation', 'spouse_phone_no', 'government_type_id', 'government_no',
         'prev_balance'
     ];
@@ -409,9 +403,7 @@ class MemberController extends Controller
         if (isset($validated[$field]) && ($validated[$field] === '' || $validated[$field] === 'null')) {
             $validated[$field] = null;
         }
-    }
-
-    // Handle numeric fields specifically
+    }    // Handle numeric fields specifically
     $numericFields = ['height', 'weight', 'prev_balance'];
     foreach ($numericFields as $field) {
         if (isset($validated[$field]) && $validated[$field] !== null) {

@@ -181,7 +181,8 @@ const tabs = [
   { label: 'Master List', path: '/treasurer/master-list' },
   { label: 'Expenses', path: '/treasurer/expenses' },
   { label: 'Collection', path: '/treasurer/collection' },
-  { label: 'Payment Status', path: '/treasurer/payment-status' }
+  { label: 'Payment Status', path: '/treasurer/payment-status' },
+  { label: 'Consumption Report', path: '/treasurer/consumption-report' }
 ]
 
 const members = ref([])

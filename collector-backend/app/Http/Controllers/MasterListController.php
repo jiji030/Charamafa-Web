@@ -95,20 +95,21 @@ class MasterListController extends Controller
     {
         // Get important_information for calculations
         $info = DB::table('important_information')->first();
-        
-        $query = DB::table('members')
+          $query = DB::table('members')
             ->leftJoin('water_consumptions', function($join) {
                 $join->on('members.member_id', '=', 'water_consumptions.member_Id')
                      ->whereRaw('water_consumptions.id = (SELECT MAX(id) FROM water_consumptions WHERE member_Id = members.member_id)');
             })
-            ->select(
+            ->leftJoin('ts_numbers', 'members.ts_Id', '=', 'ts_numbers.ts_Id')            ->select(
                 'members.*',
+                'ts_numbers.ts_no',
+                'ts_numbers.landmark',
                 'water_consumptions.present_CUM_consumption',
                 'water_consumptions.prev_CUM_consumption',
+                'water_consumptions.present_meter_reading',
+                'water_consumptions.prev_meter_reading',
                 'water_consumptions.reading_date as billing_date'
-            );
-
-        // Search functionality
+            );        // Search functionality
         if ($request->has('search') && $request->search) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
@@ -119,7 +120,10 @@ class MasterListController extends Controller
             });
         }
 
-        $members = $query->get();
+        $members = $query
+            ->orderBy('members.ts_Id')
+            ->orderBy('members.account_no')
+            ->get();
 
         // Calculate billing details for each member using the same logic as MemberController
         $members = $members->map(function($member) use ($info) {

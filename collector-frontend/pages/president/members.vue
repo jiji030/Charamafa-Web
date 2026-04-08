@@ -1064,9 +1064,7 @@
                   <p class="font-medium">{{ selectedMemberDetails.region || '-' }}</p>
                 </div>
               </div>
-            </div>
-
-            <!-- Membership Info -->
+            </div>            <!-- Membership Info -->
             <div class="bg-gray-50 p-4 rounded-lg">
               <h4 class="font-semibold text-gray-800 mb-3">Membership Information</h4>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
@@ -1084,6 +1082,70 @@
                   <span class="text-gray-600">Registration Date:</span>
                   <p class="font-medium">{{ formatDate(selectedMemberDetails.registration_date) }}</p>
                 </div>
+              </div>
+            </div>
+
+            <!-- Water Consumption & Meter Reading Edit Section -->
+            <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
+              <h4 class="font-semibold text-gray-800 mb-4">Water Consumption & Meter Reading</h4>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">                <!-- Previous Reading -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Previous Meter Reading</label>
+                  <input
+                    v-model.number="editingReadings.prev_meter_reading"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    @change="updateCumConsumption"
+                    @input="updateCumConsumption"
+                  />
+                  <p class="text-xs text-gray-600 mt-1">Previous CUM: {{ editingReadings.prev_CUM_consumption || 0 }}</p>
+                </div><!-- Present Reading -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Present Meter Reading</label>
+                  <input
+                    v-model.number="editingReadings.present_meter_reading"
+                    type="number"
+                    :min="editingReadings.prev_meter_reading || 0"
+                    step="0.01"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    :class="{ 'border-red-500': readingError }"
+                    @change="updateCumConsumption"
+                    @input="updateCumConsumption"
+                  />
+                  <p v-if="readingError" class="text-xs text-red-600 mt-1">{{ readingError }}</p>
+                  <p v-else class="text-xs text-gray-600 mt-1">Present CUM: {{ editingReadings.present_CUM_consumption || 0 }}</p>
+                </div>
+
+                <!-- Display Current Consumption -->
+                <div class="md:col-span-2 bg-white p-4 rounded border-l-4 border-blue-500">
+                  <div class="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <span class="text-gray-600">Calculated CUM:</span>
+                      <p class="font-bold text-lg text-blue-600">{{ editingReadings.present_CUM_consumption || 0 }} CUM</p>
+                    </div>
+                    <div>
+                      <span class="text-gray-600">Difference:</span>
+                      <p class="font-bold text-lg text-green-600">{{ (editingReadings.present_meter_reading || 0) - (editingReadings.prev_meter_reading || 0) }} units</p>
+                    </div>
+                  </div>
+                </div>
+              </div>              <!-- Save Readings Button -->
+              <div class="mt-4 flex gap-3">
+                <button
+                  @click="saveReadings"
+                  :disabled="isSavingReadings || !!readingError || editingReadings.present_meter_reading < editingReadings.prev_meter_reading"
+                  class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  {{ isSavingReadings ? 'Saving...' : 'Save Meter Readings' }}
+                </button>
+                <button
+                  @click="resetReadingsForm"
+                  class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           </div>
@@ -1200,6 +1262,16 @@ const showResetModal = ref(false)
 const selectedResetMember = ref(null)
 const resettingConsumption = ref(false)
 
+// Water readings editing state
+const editingReadings = ref({
+  prev_meter_reading: 0,
+  present_meter_reading: 0,
+  prev_CUM_consumption: 0,
+  present_CUM_consumption: 0
+})
+const readingError = ref('')
+const isSavingReadings = ref(false)
+
 // Shared meter detection variables
 const sharedMeterInfo = ref([])
 const checkingSharedMeter = ref(false)
@@ -1293,15 +1365,114 @@ const removePhoto = () => {
   }
 }
 
-// Modal and reset functions
+// Water readings methods
+const updateCumConsumption = () => {
+  readingError.value = ''
+  
+  // Validate that present reading is not less than previous reading
+  if (editingReadings.value.present_meter_reading < editingReadings.value.prev_meter_reading) {
+    readingError.value = 'Present meter reading cannot be less than previous meter reading'
+    editingReadings.value.present_CUM_consumption = 0
+    console.log('Validation error set:', readingError.value)
+    return
+  }
+  
+  // Calculate CUM consumption
+  editingReadings.value.present_CUM_consumption = 
+    editingReadings.value.present_meter_reading - editingReadings.value.prev_meter_reading
+  
+  console.log('Validation passed. CUM:', editingReadings.value.present_CUM_consumption, 'Error:', readingError.value)
+}
+
+const saveReadings = async () => {
+  console.log('saveReadings called. readingError:', readingError.value, 'isSavingReadings:', isSavingReadings.value)
+  if (!selectedMemberDetails.value) {
+    console.log('No member selected')
+    return
+  }
+  if (readingError.value) {
+    console.log('Reading error exists:', readingError.value)
+    return
+  }
+  
+  isSavingReadings.value = true
+  try {
+    // Save water consumption record only (readings are stored in water_consumptions table, not members table)
+    await api('/water-consumptions', {
+      method: 'POST',
+      body: {
+        member_Id: selectedMemberDetails.value.member_id,
+        prev_CUM_consumption: editingReadings.value.prev_CUM_consumption,
+        present_CUM_consumption: editingReadings.value.present_CUM_consumption,
+        prev_meter_reading: editingReadings.value.prev_meter_reading,
+        present_meter_reading: editingReadings.value.present_meter_reading,
+        reading_date: new Date().toISOString().split('T')[0]
+      }
+    })
+    
+    // Show success notification
+    notificationMessage.value = `Meter readings updated successfully for ${selectedMemberDetails.value.account_no}`
+    showNotification.value = true
+    setTimeout(() => {
+      showNotification.value = false
+    }, 5000)
+      // Reload members and close modal
+    await loadMembers()
+    closeMemberDetailsModal()  } catch (err) {
+    console.error('Failed to save readings:', err)
+    alert(err.data?.message || 'Failed to save meter readings. Please try again.')
+  } finally {
+    isSavingReadings.value = false
+  }
+}
+
+const resetReadingsForm = () => {
+  if (selectedMemberDetails.value && selectedMemberDetails.value.latest_consumption) {
+    const consumption = selectedMemberDetails.value.latest_consumption
+    editingReadings.value = {
+      prev_meter_reading: consumption.prev_meter_reading || 0,
+      present_meter_reading: consumption.present_meter_reading || 0,
+      prev_CUM_consumption: consumption.prev_CUM_consumption || 0,
+      present_CUM_consumption: consumption.present_CUM_consumption || 0
+    }
+  }
+  readingError.value = ''
+}
+
 const viewMemberDetails = (member) => {
   selectedMemberDetails.value = member
+  // Initialize readings from latest consumption data
+  if (member.latest_consumption) {
+    const consumption = member.latest_consumption
+    editingReadings.value = {
+      prev_meter_reading: consumption.prev_meter_reading || 0,
+      present_meter_reading: consumption.present_meter_reading || 0,
+      prev_CUM_consumption: consumption.prev_CUM_consumption || 0,
+      present_CUM_consumption: consumption.present_CUM_consumption || 0
+    }
+  } else {
+    // No consumption data yet, start with zeros
+    editingReadings.value = {
+      prev_meter_reading: 0,
+      present_meter_reading: 0,
+      prev_CUM_consumption: 0,
+      present_CUM_consumption: 0
+    }
+  }
+  readingError.value = ''
   showMemberDetailsModal.value = true
 }
 
 const closeMemberDetailsModal = () => {
   showMemberDetailsModal.value = false
   selectedMemberDetails.value = null
+  editingReadings.value = {
+    prev_meter_reading: 0,
+    present_meter_reading: 0,
+    prev_CUM_consumption: 0,
+    present_CUM_consumption: 0
+  }
+  readingError.value = ''
 }
 
 const resetWaterConsumption = (member) => {
@@ -1398,7 +1569,8 @@ const tabs = [
   { label: 'Collection', path: '/president/collection' },
   { label: 'Payment Status', path: '/president/payment-status' },
   { label: 'Important Info', path: '/president/important-info' },
-  { label: 'Employee', path: '/president/employee' }
+  { label: 'Employee', path: '/president/employee' },
+  { label: 'Consumption Report', path: '/president/water-report' }
 ]
 
 const totalMembers = computed(() => members.value.length)
@@ -1785,8 +1957,7 @@ onMounted(() => {
   loadPuroks()
   loadTsNumbers()
   loadMembershipFees()
-  
-  // Check for success notification from sessionStorage
+    // Check for success notification from sessionStorage
   const successMsg = sessionStorage.getItem('memberUpdateSuccess')
   if (successMsg) {
     notificationMessage.value = successMsg
@@ -1803,8 +1974,7 @@ onMounted(() => {
   setTimeout(() => {
     updateScrollWidth()
   }, 500)
-})
-</script>
+})</script>
 
 <style scoped>
 @keyframes slide-in {

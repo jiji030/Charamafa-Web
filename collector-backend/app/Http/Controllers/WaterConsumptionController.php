@@ -158,6 +158,118 @@ class WaterConsumptionController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Server error: ' . $e->getMessage()
+            ], 500);        }
+    }
+
+    /**
+     * Create a new water consumption record from president's member details modal
+     * Used when president edits meter readings for a member
+     */
+    public function store(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'member_Id' => 'required|integer|exists:members,member_id',
+                'prev_meter_reading' => 'nullable|numeric',
+                'present_meter_reading' => 'nullable|numeric',
+                'prev_CUM_consumption' => 'nullable|numeric',
+                'present_CUM_consumption' => 'nullable|numeric',
+                'reading_date' => 'nullable|date',
+                'processed_by' => 'nullable|integer',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            DB::beginTransaction();
+
+            try {
+                // Validate that present_meter_reading >= prev_meter_reading
+                $data = $request->all();
+                if (isset($data['present_meter_reading']) && isset($data['prev_meter_reading']) &&
+                    $data['present_meter_reading'] !== null && $data['prev_meter_reading'] !== null) {
+                    if ($data['present_meter_reading'] < $data['prev_meter_reading']) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Validation error: Present meter reading cannot be less than previous meter reading'
+                        ], 422);
+                    }
+                }                // Create or update water consumption record
+                $readingDate = $data['reading_date'] ?? now()->toDateString();
+                
+                // Check if a record exists for this member on this date
+                $existingConsumption = DB::table('water_consumptions')
+                    ->where('member_Id', $data['member_Id'])
+                    // ->whereDate('reading_date', $readingDate)
+                    ->first();
+                
+                if ($existingConsumption) {
+                    // Update existing record
+                    DB::table('water_consumptions')
+                        ->where('id', $existingConsumption->id)
+                        ->update([
+                            'prev_meter_reading' => $data['prev_meter_reading'] ?? null,
+                            'present_meter_reading' => $data['present_meter_reading'] ?? null,
+                            'prev_CUM_consumption' => $data['prev_CUM_consumption'] ?? null,
+                            'present_CUM_consumption' => $data['present_CUM_consumption'] ?? null,
+                            'processed_by' => $data['processed_by'] ?? auth()->id(),
+                        ]);
+                    
+                    Log::info('Water consumption record updated from president portal', [
+                        'id' => $existingConsumption->id,
+                        'member_id' => $data['member_Id'],
+                        'present_CUM_consumption' => $data['present_CUM_consumption'],
+                        'reading_date' => $readingDate
+                    ]);
+                } else {
+                    // No existing record found - CREATE a new one (first-time save)
+                    DB::table('water_consumptions')->insert([
+                        'member_Id' => $data['member_Id'],
+                        'prev_meter_reading' => $data['prev_meter_reading'] ?? null,
+                        'present_meter_reading' => $data['present_meter_reading'] ?? null,
+                        'prev_CUM_consumption' => $data['prev_CUM_consumption'] ?? null,
+                        'present_CUM_consumption' => $data['present_CUM_consumption'] ?? null,
+                        'reading_date' => $readingDate,
+                        'processed_by' => $data['processed_by'] ?? auth()->id(),
+                    ]);
+                    
+                    Log::info('Water consumption record created from president portal', [
+                        'member_id' => $data['member_Id'],
+                        'present_CUM_consumption' => $data['present_CUM_consumption'],
+                        'reading_date' => $readingDate
+                    ]);
+                }
+
+                // Mark member as read (readings updated)
+                DB::table('members')
+                    ->where('member_id', $data['member_Id'])
+                    ->update(['is_read' => 1]);
+
+                DB::commit();                return response()->json([
+                    'success' => true,
+                    'message' => 'Water consumption record updated successfully',
+                    'data' => $data
+                ], 200);
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Error creating water consumption record', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create water consumption record: ' . $e->getMessage()
             ], 500);
         }
     }

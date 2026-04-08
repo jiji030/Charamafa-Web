@@ -115,9 +115,7 @@
               </svg>
               <span v-if="!savingSnapshot">Save Month</span>
               <span v-else>Saving...</span>
-            </button>
-
-            <button
+            </button>            <button
               @click="printMasterList"
               class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 no-print"
             >
@@ -168,8 +166,9 @@
                   {{ member.name || (member.lname + ', ' + member.fname + (member.mname ? ' ' + member.mname.charAt(0) + '.' : '')) }}
                 </td><td class="px-4 py-3 text-gray-900 border-r border-gray-200 text-center">{{ member.cum_consumption || 0 }}</td>
                 <td class="px-4 py-3 text-gray-900 border-r border-gray-200 text-right">₱{{ (member.minimum_amount || 0).toFixed(2) }}</td>
-                <td class="px-4 py-3 text-gray-900 border-r border-gray-200 text-right">₱{{ (member.excess_cum || 0).toFixed(2) }}</td>                
-                <!-- <td class="px-4 py-3 text-gray-900 border-r border-gray-200 text-right">₱{{ (member.loss_damage || 0).toFixed(2) }}</td> -->                <td class="px-4 py-3 text-gray-900 border-r border-gray-200 text-right">
+                <td class="px-4 py-3 text-gray-900 border-r border-gray-200 text-right">₱{{ (member.excess_cum || 0).toFixed(2) }}</td>                  <!-- <td class="px-4 py-3 text-gray-900 border-r border-gray-200 text-right">₱{{ (member.loss_damage || 0).toFixed(2) }}</td> -->
+                <td class="px-4 py-3 text-gray-900 border-r border-gray-200 text-right">
+                  <span class="print-value">₱{{ (member.damage_charges || 0).toFixed(2) }}</span>
                   <input
                     v-model.number="member.damage_charges"
                     @blur="updateDamageCharges(member)"
@@ -177,7 +176,7 @@
                     type="number"
                     step="0.01"
                     min="0"
-                    class="w-full text-left border-0 bg-transparent hover:bg-gray-50 focus:bg-white focus:border focus:border-green-500 focus:ring-1 focus:ring-green-500 rounded px-2 py-1 text-sm no-spinner"
+                    class="w-full text-left border-0 bg-transparent hover:bg-gray-50 focus:bg-white focus:border focus:border-green-500 focus:ring-1 focus:ring-green-500 rounded px-2 py-1 text-sm no-spinner screen-only"
                     :placeholder="(member.damage_charges || 0).toFixed(2)"
                   />
                 </td>
@@ -223,7 +222,8 @@ const tabs = [
   { label: 'Collection', path: '/president/collection' },
   { label: 'Payment Status', path: '/president/payment-status' },
   { label: 'Important Info', path: '/president/important-info' },
-  { label: 'Employee', path: '/president/employee' }
+  { label: 'Employee', path: '/president/employee' },
+  { label: 'Consumption Report', path: '/president/water-report' }
 ]
 
 const members = ref([])
@@ -407,29 +407,45 @@ const printMasterList = () => {
   } else {
     periodInfo = '<p>Period: <strong>Current (Live Data)</strong></p>'
   }
-
   printWindow.document.write('<html><head><title>Master List</title>')
   printWindow.document.write('<style>')
   printWindow.document.write(`
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    h1 { text-align: center; margin-bottom: 20px; }
-    .period-info { text-align: center; font-weight: bold; margin-bottom: 15px; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background-color: #d4edda; font-weight: bold; }
+    body { font-family: Arial, sans-serif; margin: 15px; }
+    h1 { text-align: center; margin-bottom: 10px; font-size: 16px; }
+    p { margin: 3px 0; font-size: 11px; }
+    .period-info { text-align: center; font-weight: bold; margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    th, td { border: 1px solid #999; padding: 4px; text-align: right; }
+    th { background-color: #d4edda; font-weight: bold; font-size: 9px; }
+    td { padding: 3px 4px; }
+    th:first-child, td:first-child { text-align: center; width: 3%; }
+    th:nth-child(2), td:nth-child(2) { width: 6%; }
+    th:nth-child(3), td:nth-child(3) { width: 6%; }
+    th:nth-child(4), td:nth-child(4) { text-align: left; width: 12%; }
+    th:nth-child(5), td:nth-child(5) { width: 5%; }
+    th:nth-child(6), td:nth-child(6) { width: 7%; }
+    th:nth-child(7), td:nth-child(7) { width: 7%; }
+    th:nth-child(8), td:nth-child(8) { width: 6%; }
+    th:nth-child(9), td:nth-child(9) { width: 6%; }
+    th:nth-child(10), td:nth-child(10) { width: 6%; }
+    th:nth-child(11), td:nth-child(11) { width: 6%; }
+    th:nth-child(12), td:nth-child(12) { width: 6%; }
+    th:nth-child(13), td:nth-child(13) { width: 6%; }    th:nth-child(14), td:nth-child(14) { width: 8%; font-weight: bold; }
+    th:nth-child(15), td:nth-child(15) { text-align: center; width: 8%; }
     tr:nth-child(even) { background-color: #f9f9f9; }
     tr.disconnected { background-color: #fee2e2 !important; }
     tr.disconnected td { color: #991b1b; font-weight: bold; }
-    .print-header { text-align: center; margin-bottom: 20px; }
+    .print-header { text-align: center; margin-bottom: 10px; }
+    input { display: none; }
   `)
   printWindow.document.write('</style></head><body>')
   printWindow.document.write('<div class="print-header">')
-  printWindow.document.write('<h1>CHARMAFA - Master List</h1>')
-  printWindow.document.write('<p>A Waterworks Service Association</p>')
+  printWindow.document.write('<h1>CHARMAFA</h1>')
+  printWindow.document.write('<p>Charito Mahayag Farmers Association</p>')
   printWindow.document.write(periodInfo)
   printWindow.document.write('<p>Generated: ' + new Date().toLocaleDateString() + '</p>')
   printWindow.document.write('</div>')
-  
+
   // Get the table and add class to disconnected rows
   const printableTable = printContent.cloneNode(true)
   const rows = printableTable.querySelectorAll('tbody tr')
@@ -451,6 +467,11 @@ const printMasterList = () => {
 const handleLogout = async () => {
   await authStore.logout()
   navigateTo('/')
+}
+
+// Print Water Consumption Report - navigates to dedicated water-report page
+const printWaterConsumption = () => {
+  router.push('/president/water-report')
 }
 
 // Update damage charges function
@@ -516,6 +537,10 @@ onMounted(() => {
     display: none !important;
   }
   
+  .screen-only {
+    display: none !important;
+  }
+  
   table {
     page-break-inside: auto;
   }
@@ -523,6 +548,12 @@ onMounted(() => {
   tr {
     page-break-inside: avoid;
     page-break-after: auto;
+  }
+}
+
+@media screen {
+  .print-value {
+    display: none !important;
   }
 }
 

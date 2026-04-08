@@ -610,6 +610,72 @@
                     />
                   </div>
                 </div>
+              </div>              <!-- Water Consumption & Meter Reading -->
+              <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <h4 class="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b">Water Consumption & Meter Reading</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">                  <!-- Previous Reading -->
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Previous Meter Reading</label>
+                    <input
+                      v-model.number="waterReadings.prev_meter_reading"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      @change="calculateCumConsumption"
+                      @input="calculateCumConsumption"
+                    />
+                    <p class="text-xs text-gray-600 mt-1">Previous CUM: {{ waterReadings.prev_CUM_consumption || 0 }}</p>
+                  </div>
+
+                  <!-- Present Reading -->
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Present Meter Reading</label>
+                    <input
+                      v-model.number="waterReadings.present_meter_reading"
+                      type="number"
+                      :min="waterReadings.prev_meter_reading || 0"
+                      step="0.01"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      :class="{ 'border-red-500': readingError }"
+                      @change="calculateCumConsumption"
+                      @input="calculateCumConsumption"
+                    />
+                    <p v-if="readingError" class="text-xs text-red-600 mt-1">{{ readingError }}</p>
+                    <p v-else class="text-xs text-gray-600 mt-1">Present CUM: {{ waterReadings.present_CUM_consumption || 0 }}</p>
+                  </div>
+
+                  <!-- Display Current Consumption -->
+                  <div class="md:col-span-2 bg-white p-4 rounded border-l-4 border-blue-500">
+                    <div class="grid grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <span class="text-gray-600">Calculated CUM:</span>
+                        <p class="font-bold text-lg text-blue-600">{{ waterReadings.present_CUM_consumption || 0 }} CUM</p>
+                      </div>
+                      <div>
+                        <span class="text-gray-600">Difference:</span>
+                        <p class="font-bold text-lg text-green-600">{{ (waterReadings.present_meter_reading || 0) - (waterReadings.prev_meter_reading || 0) }} units</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>                <!-- Save Readings Button -->
+                <div class="mt-4 flex gap-3">
+                  <button
+                    type="button"
+                    @click="saveWaterReadings"
+                    :disabled="savingReadings || !!readingError || waterReadings.present_meter_reading < waterReadings.prev_meter_reading"
+                    class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    {{ savingReadings ? 'Saving...' : 'Save Water Readings' }}
+                  </button>
+                  <button
+                    type="button"
+                    @click="resetWaterReadings"
+                    class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg transition-colors"
+                  >
+                    Reset
+                  </button>
+                </div>
               </div>
 
               <!-- Membership Fee -->
@@ -709,6 +775,16 @@ const videoRef = ref(null)
 const canvasRef = ref(null)
 const photoFile = ref(null)
 const photoChanged = ref(false)
+
+// Water readings refs
+const waterReadings = ref({
+  prev_meter_reading: 0,
+  present_meter_reading: 0,
+  prev_CUM_consumption: 0,
+  present_CUM_consumption: 0
+})
+const readingError = ref('')
+const savingReadings = ref(false)
 
 const memberId = computed(() => route.params.id)
 const currentPath = computed(() => route.path)
@@ -833,6 +909,28 @@ const loadMember = async () => {
     const data = await api(`/members/${memberId.value}`)
     member.value = data.member
     
+    // Add latest consumption to member object for reference
+    member.value.latest_consumption = data.latest_consumption
+    
+    // Initialize water readings from latest consumption data
+    if (data.latest_consumption) {
+      const consumption = data.latest_consumption
+      waterReadings.value = {
+        prev_meter_reading: consumption.prev_meter_reading || 0,
+        present_meter_reading: consumption.present_meter_reading || 0,
+        prev_CUM_consumption: consumption.prev_CUM_consumption || 0,
+        present_CUM_consumption: consumption.present_CUM_consumption || 0
+      }
+    } else {
+      // No consumption data yet, start with zeros
+      waterReadings.value = {
+        prev_meter_reading: 0,
+        present_meter_reading: 0,
+        prev_CUM_consumption: 0,
+        present_CUM_consumption: 0
+      }
+    }
+    
     // Format dates for input fields
     if (member.value.date_of_birth) {
       member.value.date_of_birth = member.value.date_of_birth.split('T')[0]
@@ -905,12 +1003,12 @@ const updateMember = async () => {
     
     // Clean up member data
     const cleanedMember = { ...member.value }
-    
-    // Remove nested objects that shouldn't be sent
+      // Remove nested objects that shouldn't be sent
     delete cleanedMember.purok
     delete cleanedMember.ts_number
     delete cleanedMember.membership_fee
     delete cleanedMember.water_consumptions
+    delete cleanedMember.latest_consumption
 
     // Define numeric fields that need proper type conversion
     const numericFields = ['height', 'weight', 'prev_balance', 'purok_id', 'ts_Id', 'membership_fee_id']
@@ -1032,6 +1130,88 @@ const updateMember = async () => {
   } finally {
     saving.value = false
   }
+}
+
+const calculateCumConsumption = () => {
+  readingError.value = ''
+  
+  // Validate that present reading is not less than previous reading
+  if (waterReadings.value.present_meter_reading < waterReadings.value.prev_meter_reading) {
+    readingError.value = 'Present meter reading cannot be less than previous meter reading'
+    waterReadings.value.present_CUM_consumption = 0
+    console.log('Validation error set:', readingError.value)
+    return
+  }
+  
+  // Calculate CUM consumption
+  waterReadings.value.present_CUM_consumption = 
+    waterReadings.value.present_meter_reading - waterReadings.value.prev_meter_reading
+  
+  console.log('Validation passed. CUM:', waterReadings.value.present_CUM_consumption, 'Error:', readingError.value)
+}
+
+const saveWaterReadings = async () => {
+  console.log('saveWaterReadings called. readingError:', readingError.value, 'savingReadings:', savingReadings.value)
+  if (!member.value) {
+    console.log('No member')
+    return
+  }
+  if (readingError.value) {
+    console.log('Reading error exists:', readingError.value)
+    return
+  }
+  
+  savingReadings.value = true
+  try {
+    // Save water consumption record
+    await api('/water-consumptions', {
+      method: 'POST',
+      body: {
+        member_Id: member.value.member_id,
+        prev_CUM_consumption: waterReadings.value.prev_CUM_consumption,
+        present_CUM_consumption: waterReadings.value.present_CUM_consumption,
+        prev_meter_reading: waterReadings.value.prev_meter_reading,
+        present_meter_reading: waterReadings.value.present_meter_reading,
+        reading_date: new Date().toISOString().split('T')[0]
+      }
+    })
+    
+    saveSuccess.value = 'Water readings saved successfully!'
+    setTimeout(() => {
+      saveSuccess.value = ''
+    }, 5000)
+      } catch (err) {
+    console.error('Failed to save water readings:', err)
+    
+    // Handle 404 - no existing consumption record
+    if (err.status === 404 || err.statusCode === 404) {
+      saveError.value = 'No water consumption record found for this member. Please ensure the member has been set up with an initial water consumption record first.'
+    } else {
+      saveError.value = err.data?.message || 'Failed to save water readings. Please try again.'
+    }
+  } finally {
+    savingReadings.value = false
+  }
+}
+
+const resetWaterReadings = () => {
+  if (member.value && member.value.latest_consumption) {
+    const consumption = member.value.latest_consumption
+    waterReadings.value = {
+      prev_meter_reading: consumption.prev_meter_reading || 0,
+      present_meter_reading: consumption.present_meter_reading || 0,
+      prev_CUM_consumption: consumption.prev_CUM_consumption || 0,
+      present_CUM_consumption: consumption.present_CUM_consumption || 0
+    }
+  } else {
+    waterReadings.value = {
+      prev_meter_reading: 0,
+      present_meter_reading: 0,
+      prev_CUM_consumption: 0,
+      present_CUM_consumption: 0
+    }
+  }
+  readingError.value = ''
 }
 
 const handleLogout = async () => {

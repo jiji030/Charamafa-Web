@@ -296,7 +296,8 @@ const tabs = [
   { label: 'Collection', path: '/president/collection' },
   { label: 'Payment Status', path: '/president/payment-status' },
   { label: 'Important Info', path: '/president/important-info' },
-  { label: 'Employee', path: '/president/employee' }
+  { label: 'Employee', path: '/president/employee' },
+  { label: 'Consumption Report', path: '/president/water-report' }
 ]
 
 // Dashboard Data

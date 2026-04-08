@@ -5,9 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 
 class Member extends Model
-{    protected $table = 'members';
+{
+    protected $table = 'members';
     protected $primaryKey = 'member_id';
-    public $timestamps = false; // Disable timestamps - table uses registration_date and update_date instead    
+    public $timestamps = false; // Disable timestamps - table uses registration_date and update_date instead
+    
     protected $fillable = [
         'account_no', 'purok_id', 'ts_Id', 'meter_no',
         'fname', 'mname', 'lname', 'suffix',
@@ -21,9 +23,10 @@ class Member extends Model
         'spouse_occupation', 'spouse_phone_no', 'membership_fee_id',
         'is_approved', 'photo_name', 'photo_path', 'registration_date',
         'update_date', 'government_type_id', 'government_no',
-        'prev_balance', 'connection_status', 'reconnection_date', 'is_read', 'is_paid',
-        'damage_charges'
-    ];    protected $casts = [
+        'prev_balance', 'connection_status', 'reconnection_date', 'is_read', 'is_paid',        'damage_charges'
+    ];
+
+    protected $casts = [
         'prev_balance' => 'decimal:2',
         'damage_charges' => 'decimal:2',
         'connection_status' => 'integer',

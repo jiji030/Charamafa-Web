@@ -165,6 +165,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/members/{id}', [MemberController::class, 'update']);
     
     Route::get('/water-consumptions', [WaterConsumptionController::class, 'index']);
+    Route::post('/water-consumptions', [WaterConsumptionController::class, 'store']);
     
     // Members
     Route::post('/members', [MemberController::class, 'store']);  
@@ -217,6 +218,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });    Route::get('/monthly-master-list/{billingPeriod}', function ($billingPeriod) {
         return DB::table('monthly_master_lists')
             ->where('billing_period_id', $billingPeriod)
+            ->orderBy('ts_id')
             ->orderBy('account_no')
             ->get();
     });
